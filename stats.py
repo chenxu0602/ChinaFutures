@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from collections import defaultdict
+from continuousFuturesContracts import loadDailyContinuous
 
 
 class Port:
@@ -88,8 +89,10 @@ class IntraPort(Port):
         self.annualizedPortSharpe = self.annualizedPortRet / self.annualizedPortStd
 
 if __name__ == "__main__":
-    pass
 
+    pd.set_option('display.expand_frame_repr', False)
+
+    continuous = loadDailyContinuous("/Users/chenxu/Work/ChinaFutures")
 
     """
     fig, ax = plt.subplots()
