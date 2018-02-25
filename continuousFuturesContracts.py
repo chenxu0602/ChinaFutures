@@ -34,14 +34,29 @@ def loadRawData(rawdir, dirs, products):
         print("Loading data from {0} ...".format(productdir))
 
         for con in os.listdir(productdir):
-            contract, ext = re.split('\.', con)
+            contract, _ = re.split('\.', con)
             filename = os.path.join(productdir, con)
             df = pd.read_csv(filename, parse_dates=[0], index_col=[0])
+            df.fillna(method="bfill", inplace=True)
             df["Contract"] = contract
             df["Close"].fillna(df["Settle"], inplace=True)
             df["PnL"] = np.log(df["Settle"]).diff()
-            df["Liquidity"] = 0.7 * df["Volume"].rolling(window=3, min_periods=1).mean() \
-					+ 0.3 * df["OI"].rolling(window=3, min_periods=1).mean()
+            df["Liquidity"] = 0.7 * df["Volume"].rolling(window=2, min_periods=1).mean() \
+					+ 0.3 * df["OI"].rolling(window=2, min_periods=1).mean()
+
+            high_minus_low   = df["High"] - df["Low"]
+            high_minus_close = df["High"] - df["Close"].shift(1)
+            low_minus_close  = df["Low"] - df["Close"].shift(1)
+
+            df_minus = pd.DataFrame({"HL":high_minus_low, "HC":high_minus_close.abs(), \
+                "LC":low_minus_close.abs()})
+
+            tr  = df_minus.max(axis=1)
+            atr = tr.ewm(span=14, min_periods=1, adjust=False).mean()
+            df["TR"] = tr
+            df["ATR"] = atr.div(df["Settle"].rolling(window=5, min_periods=1).mean())
+            df["ATR"].fillna(method="bfill")
+
             results[sub][contract] = df
 
     return results
@@ -82,6 +97,8 @@ def signalChain(sym, cons, fld):
                 res.loc[date, "Volume"]    = data.loc[date, "Volume"].round(0)
                 res.loc[date, "OI"]        = data.loc[date, "OI"].round(0)
                 res.loc[date, "PnL"]       = data.loc[date, "PnL"].round(6)
+                res.loc[date, "TR"]        = data.loc[date, "TR"].round(1)
+                res.loc[date, "ATR"]       = data.loc[date, "ATR"].round(4)
             else:
                 print("{0} doesn't have any contracts on date {1}!".format(sym, date))
                 continue
@@ -90,24 +107,27 @@ def signalChain(sym, cons, fld):
 
     return res
 
-def loadDailyContinuous(rootdir):
-	datadir = os.path.join(rootdir, "continuous")
-	if not os.path.exists(datadir):
-		print("Data directory {0} doesn't exist!".format(datadir))
-		sys.exit(1)
+def loadDailyContinuous(rootdir, products=[]):
+    datadir = os.path.join(rootdir, "continuous")
+    if not os.path.exists(datadir):
+        print("Data directory {0} doesn't exist!".format(datadir))
+        sys.exit(1)
 
-	csvfiles = os.listdir(datadir)
-	results = defaultdict(pd.DataFrame)
+    csvfiles = os.listdir(datadir)
+    results = defaultdict(pd.DataFrame)
 
-	for f in sorted(csvfiles):
-		sym, ext = re.split('\.', f)
-		datafile = os.path.join(datadir, f)
+    for f in sorted(csvfiles):
+        sym, ext = re.split('\.', f)
+        if products and not sym in products: 
+            continue
 
-		print("Loading data {0} ...".format(datafile))
-		df = pd.read_csv(datafile, parse_dates=[0], index_col=[0])
-		results[sym] = df
+        datafile = os.path.join(datadir, f)
 
-	return results
+        print("Loading data {0} ...".format(datafile))
+        df = pd.read_csv(datafile, parse_dates=[0], index_col=[0])
+        results[sym] = df
+
+    return results
 
 if __name__ == "__main__":
 
@@ -115,7 +135,7 @@ if __name__ == "__main__":
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--rootdir", nargs="?", type=str, default="/Users/chenxu/Work/ChinaFutures", 
         dest="rootdir", help="root directory")
-    parser.add_argument("--rawdatadir", nargs="?", type=str, default="rawdata.2018-01-27", dest="rawdatadir", help="raw data dir")
+    parser.add_argument("--rawdatadir", nargs="?", type=str, default="rawdata.2018-02-24", dest="rawdatadir", help="raw data dir")
     parser.add_argument("--outdir", nargs="?", type=str, default="continuous", dest="outdir", help="output dir")
     parser.add_argument("--products", nargs="*", type=str, default=[], dest="products", help="product list")
     parser.add_argument("--fields", nargs="*", type=str, default=["Open", "High", "Low", "Close", "Settle", "Volume", "OI"], dest="fields", help="fields")
