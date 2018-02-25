@@ -26,7 +26,7 @@ chemical_universe = {
 }
 
 metal_universe = {
-    "AL", "CU", "PB", "ZN", "NI", "SN"
+    "AL", "CU", "PB", "ZN", "NI", "SN", "AG", "AU"
 }
 
 def TSRank(array):
@@ -203,6 +203,10 @@ def daily_momentum(N, data, products, start="2017-01-01", delay=0, weight="Equal
     signals[(cumPnLs > 0) & (oiRank < 0.7)] = 1.0
     signals[(cumPnLs < 0) & (volRank > 0.3)] = -1.0
 
+    """
+    signals[(cumPnLs > 0)] = 1.0
+    signals[(cumPnLs < 0)] = -1.0
+    """
 
     signals.fillna(0, inplace=True)
 
@@ -242,13 +246,16 @@ if __name__ == "__main__":
 
 
     products = ["A", "M", "Y"]
-    products = black_universe.union(chemical_universe).union(metal_universe)
+    products = black_universe
+#    products = chemical_universe
     continuous = loadDailyContinuous("/Users/chenxu/Work/ChinaFutures", products)
-    signals, returns, weights = daily_momentum(15, continuous, products, "2017-01-01", 0, "ATR")
+    signals, returns, weights = daily_momentum(15, continuous, products, "2007-01-01", 0, "ATR")
 
-#    x = my_pca(250, continuous, products)
+    x = my_pca(1500, continuous, products)
 
     st = Port("Daily-Momentum", signals, returns, weights, 10)
+    print(st)
+    st.plot()
 
 
     """

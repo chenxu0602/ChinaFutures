@@ -10,8 +10,14 @@ import os, sys, datetime, argparse, pytz, glob, logging, re, csv, operator, math
 from dy8_signals import *
 
 class Stats:
-	def __init__(self, signal, data, slip, logger):
-		self.position = signal.fillna(0)
+	def __init__(self, signal, data, start, end, slip, weight="Equal", logger=None):
+		self.signal = signal[(signal.index >= start) & (signal.index < end)]
+		self.weight = weight_equal(self.signal, data, logger)
+
+		if weight == "ATR":
+			self.weight = weight_atr(self.signal, data, start, end, logger)
+
+		self.position = self.signal.fillna(0).mul(self.weight)
 		self.symbols = self.position.columns
 		
 		""" Get the return data frame """
@@ -20,35 +26,37 @@ class Stats:
 			if not sym in data.keys():
 				logger.critical("ERROR: %s appears in the signal but not in the return data!", sym)
 				continue
-			return_dict[sym] = data[sym]["PnL"]
+			ret = data[sym]["PnL"]
+			ret = ret[(ret.index >= start) & (ret.index < end)]
+			return_dict[sym] = ret
 		self.ret = pd.DataFrame(return_dict)
 		self.ret.fillna(0, inplace=True)
 
 		""" Calculate PnL """
-		self.rawPnL = self.ret.mul(self.position, fill_value=0)
+		self.rawPnL = self.ret.mul(self.position.shift(1), fill_value=0)
 
 		""" Calculate Slippage """
 		self.slippage = self.position.diff(1).abs() * slip * 1e-4
 		self.PnL = self.rawPnL - self.slippage
 
 		""" Calculate Annuazlied Return """
-		self.annualizedReturn = self.PnL.mean() * 252.
+		self.annReturn = self.PnL.mean() * 252.
 		
 		""" Calculate Volatility """
-		self.annualizedVolatility = self.PnL.std() * np.sqrt(252.)
+		self.annVolatility = self.PnL.std() * np.sqrt(252.)
 
 		""" Calculate Sharpe Ratio """
-		self.sharpe = self.annualizedReturn / self.annualizedVolatility
+		self.sharpe = self.annReturn / self.annVolatility
 
 		""" Calculate Portfolio Stats """
 		self.portfolioPnL = self.PnL.sum(axis=1)
-		self.portfolioAnnualizedReturn = self.portfolioPnL.mean() * 252.
-		self.portfolioAnnualizedVolatility = self.portfolioPnL.std() * np.sqrt(252.)
-		self.portfolioSharpe = self.portfolioAnnualizedReturn / self.portfolioAnnualizedVolatility
+		self.portfolioAnnReturn = self.portfolioPnL.mean() * 252.
+		self.portfolioAnnVolatility = self.portfolioPnL.std() * np.sqrt(252.)
+		self.portfolioSharpe = self.portfolioAnnReturn / self.portfolioAnnVolatility
 
 		logger.info("Products: %s", ','.join(self.symbols))
-		logger.info("Portfolio Annualized Return: %.2f%%", self.portfolioAnnualizedReturn * 100)
-		logger.info("Portfolio Annualized Volatility: %.2f%%", self.portfolioAnnualizedVolatility * 100)
+		logger.info("Portfolio Ann Return: %.2f%%", self.portfolioAnnReturn * 100)
+		logger.info("Portfolio Ann Volatility: %.2f%%", self.portfolioAnnVolatility * 100)
 		logger.info("Portfolio Sharpe Ratio: %.2f", self.portfolioSharpe)
 
 
@@ -74,17 +82,12 @@ if __name__ == "__main__":
 	logger.info("Today is %s", today.strftime("%Y-%m-%d"))
 
 	maindir  = os.path.join(args.datadir, "main")
-	frontdir = os.path.join(args.datadir, "front")
 
-	mains  = load_continuous_dailydata(maindir, args.products, logger)
-	fronts = load_continuous_dailydata(frontdir, args.products, logger)
+	data = load_continuous_dailydata(maindir, args.products, logger)
+	signal = daily_return_mom(data, 15, 1, 10, logger)
 
-	signal_ortus_main  = ortus(mains, 1, 10, logger)
-	signal_ortus_front = ortus(fronts, 1, 10, logger)
+#	signal = daily_regression(data, args.products, 3, 10, 5, logger)
 
-	weight_main  = weight_atr(signal_ortus_main, mains, logger)
-	weight_front = weight_atr(signal_ortus_front, fronts, logger)
-
-	stats_main  = Stats(signal_ortus_main * weight_main, mains, 5, logger)
-	stats_front = Stats(signal_ortus_front * weight_front, fronts, 10, logger)
-
+	start = datetime.datetime(2007, 1, 1)
+	end = datetime.datetime(2018, 1, 1)
+	stats = Stats(signal, data, start, end, 0, "ATR", logger)

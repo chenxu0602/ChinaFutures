@@ -49,6 +49,46 @@ def daily_return_mom(data, N, delay=0, smooth=10, logger=None):
 
 	return signal
 
+def daily_regression(data, products, L, N, delay=0, logger=None):
+	if data == None: return None
+	signal_dict = defaultdict(pd.Series)
+	for sym in data.keys():
+		if len(products) > 0 and not sym in products: continue
+		df = data[sym]
+		ret = df["PnL"].copy(deep=True)
+		ret  = ret.resample("5D", label="right", closed="right").sum()
+		sig = pd.Series(index=ret.index)
+		retN = ret.shift(1).rolling(window=L, min_periods=1).sum()
+
+		for i in range(L+N, len(ret)):
+			end = ret.index[i]
+			start = ret.index[i-N]
+
+			df1 = ret[(ret.index > start) & (ret.index <= end)]
+			df2 = retN[(retN.index > start) & (retN.index <= end)]
+
+			cor = df1.corr(df2)
+			logger.debug("%s %s   corr: %.2f", end, sym, cor)
+
+			if cor > -0.0:
+				indicator = df2[end]
+				if indicator > 0:
+					sig.loc[end] = 1.0
+				else:
+					sig.loc[end] = -1.0
+			else:
+				sig.loc[end] = 0.0
+				
+		sig2 = pd.DataFrame(index=df.index, columns=["Daily"])
+		sig3 = pd.merge(sig2, sig.to_frame(name="Weekly"), left_index=True, right_index=True, how="outer")
+
+		signal_dict[sym] = sig3["Weekly"].fillna(method="ffill").shift(delay)
+
+	signal = pd.DataFrame(signal_dict)
+	signal.fillna(method="ffill", inplace=True)
+	return signal
+
+
 def combined_daily_mom(signals, logger=None):
 	if not len(signals) > 0:
 		logger.critical("Combining signals with empty signal vector ...")
@@ -64,10 +104,10 @@ def combined_daily_mom(signals, logger=None):
 
 def ortus(data, delay, smooth, logger=None):
 	signals = []
-	sig1 = daily_return_mom(data, 5, delay, 0, logger)
-	sig2 = daily_return_mom(data, 10, delay, 0, logger)
-	sig3 = daily_return_mom(data, 22, delay, 0, logger)
-	sig4 = daily_return_mom(data, 66, delay, 0, logger)
+	sig1 = daily_return_mom(data, 10, delay, 0, logger)
+	sig2 = daily_return_mom(data, 22, delay, 0, logger)
+	sig3 = daily_return_mom(data, 66, delay, 0, logger)
+	sig4 = daily_return_mom(data, 132, delay, 0, logger)
 
 	signals.append(sig1)
 	signals.append(sig2)
@@ -89,7 +129,7 @@ def weight_equal(signal, data, logger=None):
 
 	return weight
 
-def weight_atr(signal, data, logger=None):
+def weight_atr(signal, data, start, end, logger=None):
 	logger.info("Calculating weighting based on ATR ...")
 
 	weight_dict = defaultdict(pd.DataFrame)
@@ -98,9 +138,9 @@ def weight_atr(signal, data, logger=None):
 		settle = data[sym]["Settle"]
 
 		df = atr.div(settle) * np.sqrt(252.)
-		weight_dict[sym] = df
+		weight_dict[sym] = df[(df.index >= start) & (df.index < end)]
 
-	weight = 1.0 / pd.DataFrame(weight_dict)
+	weight = 0.05 / pd.DataFrame(weight_dict)
 	""" Remove inf and -inf points """
 	weight.replace([np.inf, -np.inf], np.nan, inplace=True)
 	weight.fillna(method="ffill", inplace=True)
@@ -158,14 +198,7 @@ if __name__ == "__main__":
 	maindir  = os.path.join(args.datadir, "main")
 	frontdir = os.path.join(args.datadir, "front")
 
-	mains  = load_continuous_dailydata(maindir, args.products, logger)
-	fronts = load_continuous_dailydata(frontdir, args.products, logger)
+	data = load_continuous_dailydata(maindir, args.products, logger)
 
-	main_sig  = daily_return_mom(mains, 20, 0, 0, logger)
-	front_sig = daily_return_mom(fronts, 20, 0, 0, logger)
+	signal = daily_regression(data, args.products, 1, 30, 1, logger)
 
-	w_eq = weight_equal(main_sig, mains, logger)
-	w_atr = weight_atr(main_sig, mains, logger)
-
-	signal_ortus_main  = ortus(mains, 0, 10, logger)
-	signal_ortus_front = ortus(fronts, 0, 10, logger)
