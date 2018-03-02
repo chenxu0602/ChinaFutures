@@ -55,7 +55,7 @@ class Port:
 		self.wPosition.replace([np.inf, -np.inf], np.nan, inplace=True)
 		self.wPosition.fillna(0, inplace=True)
 
-		self.wRawPnL   = self.ret.mul(self.wPosition)
+		self.wRawPnL   = self.ret.mul(self.wPosition.shift(1))
 		self.wSlip     = self.wPosition.diff().abs() * slip / 1e4
 		self.wPnL      = self.wRawPnL - self.wSlip
 
