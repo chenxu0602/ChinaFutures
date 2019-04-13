@@ -58,8 +58,6 @@ if __name__ == "__main__":
 
    univ = inst.loc[inst.year >= args.startyear]
 
-   sys.exit(0)
-
    if args.exchanges:
       univ = univ.loc[univ.exchange.isin(args.exchanges)]
 
