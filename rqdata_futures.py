@@ -45,7 +45,7 @@ if __name__ == "__main__":
    parser.add_argument("--period", nargs="?", type=str, default="tick", dest="period", help="period")
    parser.add_argument("--exchanges", nargs="*", type=str, default=["CFFEX", "DCE", "CZCE", "INE", "SHFE"], dest="exchanges", help="exchanges")
    parser.add_argument("--symbols", nargs="*", type=str, default=[], dest="symbols", help="symbols")
-   parser.add_argument("--startyear", nargs="*", type=int, default=1701, dest="startyear", help="start year")
+   parser.add_argument("--startyear", nargs="?", type=int, default=1701, dest="startyear", help="start year")
 
    args = parser.parse_args()
 
@@ -57,6 +57,8 @@ if __name__ == "__main__":
    inst["year"] = inst["order_book_id"].str.extract("(\d+)").astype(int)
 
    univ = inst.loc[inst.year >= args.startyear]
+
+   sys.exit(0)
 
    if args.exchanges:
       univ = univ.loc[univ.exchange.isin(args.exchanges)]
