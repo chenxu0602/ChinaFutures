@@ -67,7 +67,7 @@ if __name__ == "__main__":
    print("Created universe.")
    print(univ)
 
-   outputdir = os.path.expandvars(args.outputdir)
+   outputdir = os.path.expandvars(args.outputdir + f"_{args.period}")
    if not os.path.exists(outputdir):
       print(f"Creating output dir {outputdir} ...")
       os.mkdir(outputdir)
